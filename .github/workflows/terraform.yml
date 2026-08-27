@@ -1,0 +1,116 @@
+name: Terraform
+
+on:
+  push:
+    branches:
+      - develop
+      - main
+  pull_request:
+    branches:
+      - develop
+      - main
+
+permissions:
+  id-token: write
+  contents: read
+  pull-requests: write
+
+env:
+  AWS_REGION: us-east-1
+
+jobs:
+  detect-environment:
+    runs-on: ubuntu-latest
+    outputs:
+      environment: ${{ steps.set-env.outputs.environment }}
+      account_id: ${{ steps.set-env.outputs.account_id }}
+      role_arn: ${{ steps.set-env.outputs.role_arn }}
+    steps:
+      - name: Set environment
+        id: set-env
+        run: |
+          if [[ "${{ github.ref }}" == "refs/heads/develop" ]] || [[ "${{ github.base_ref }}" == "develop" ]]; then
+            echo "environment=nonprod" >> $GITHUB_OUTPUT
+            echo "account_id=${{ vars.AWS_ACCOUNT_ID_NONPROD }}" >> $GITHUB_OUTPUT
+            echo "role_arn=arn:aws:iam::${{ vars.AWS_ACCOUNT_ID_NONPROD }}:role/grafana-stack-github-actions-nonprod" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.ref }}" == "refs/heads/main" ]] || [[ "${{ github.base_ref }}" == "main" ]]; then
+            echo "environment=prod" >> $GITHUB_OUTPUT
+            echo "account_id=${{ vars.AWS_ACCOUNT_ID_PROD }}" >> $GITHUB_OUTPUT
+            echo "role_arn=arn:aws:iam::${{ vars.AWS_ACCOUNT_ID_PROD }}:role/grafana-stack-github-actions-prod" >> $GITHUB_OUTPUT
+          fi
+
+  terraform-plan:
+    needs: detect-environment
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    defaults:
+      run:
+        working-directory: environments/${{ needs.detect-environment.outputs.environment }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ needs.detect-environment.outputs.role_arn }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.7.0"
+
+      - name: Terraform Init
+        run: terraform init
+
+      - name: Terraform Plan
+        id: plan
+        run: terraform plan -no-color -input=false
+        continue-on-error: true
+
+      - name: Comment PR with Plan
+        uses: actions/github-script@v7
+        if: github.event_name == 'pull_request'
+        with:
+          script: |
+            const output = `#### Terraform Plan Result 📖\n\`${{ steps.plan.outcome }}\`\n\n<details><summary>Show Plan</summary>\n\n\`\`\`hcl\n${{ steps.plan.outputs.stdout }}\n\`\`\`\n\n</details>\n\n*Triggered by @${{ github.actor }} on \`${{ github.head_ref }}\`*`;
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: output
+            })
+
+      - name: Fail on Plan Error
+        if: steps.plan.outcome == 'failure'
+        run: exit 1
+
+  terraform-apply:
+    needs: detect-environment
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/main')
+    defaults:
+      run:
+        working-directory: environments/${{ needs.detect-environment.outputs.environment }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ needs.detect-environment.outputs.role_arn }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.7.0"
+
+      - name: Terraform Init
+        run: terraform init
+
+      - name: Terraform Apply
+        run: terraform apply -auto-approve -input=false

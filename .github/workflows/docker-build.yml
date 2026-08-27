@@ -1,0 +1,95 @@
+name: Docker Build & Push
+
+on:
+  push:
+    branches:
+      - develop
+      - main
+    paths:
+      - 'modules/ecr-containers/loki/**'
+      - 'modules/ecr-containers/grafana/**'
+      - 'modules/ecr-containers/mimir/**'
+      - 'modules/ecr-containers/tempo/**'
+      - 'modules/ecr-containers/otel/**'
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: us-east-1
+
+jobs:
+  detect-environment:
+    runs-on: ubuntu-latest
+    outputs:
+      environment: ${{ steps.set-env.outputs.environment }}
+      account_id: ${{ steps.set-env.outputs.account_id }}
+      role_arn: ${{ steps.set-env.outputs.role_arn }}
+    steps:
+      - name: Set environment
+        id: set-env
+        run: |
+          if [[ "${{ github.ref }}" == "refs/heads/develop" ]]; then
+            echo "environment=nonprod" >> $GITHUB_OUTPUT
+            echo "account_id=${{ vars.AWS_ACCOUNT_ID_NONPROD }}" >> $GITHUB_OUTPUT
+            echo "role_arn=arn:aws:iam::${{ vars.AWS_ACCOUNT_ID_NONPROD }}:role/grafana-stack-github-actions-nonprod" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+            echo "environment=prod" >> $GITHUB_OUTPUT
+            echo "account_id=${{ vars.AWS_ACCOUNT_ID_PROD }}" >> $GITHUB_OUTPUT
+            echo "role_arn=arn:aws:iam::${{ vars.AWS_ACCOUNT_ID_PROD }}:role/grafana-stack-github-actions-prod" >> $GITHUB_OUTPUT
+          fi
+
+  build-and-push:
+    needs: detect-environment
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service:
+          - name: loki
+            path: modules/ecr-containers/loki
+            port: 3100
+          - name: grafana
+            path: modules/ecr-containers/grafana
+            port: 3000
+          - name: mimir
+            path: modules/ecr-containers/mimir
+            port: 8080
+          - name: tempo
+            path: modules/ecr-containers/tempo
+            port: 3200
+          - name: otel
+            path: modules/ecr-containers/otel
+            port: 4317
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ needs.detect-environment.outputs.role_arn }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and Push
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          SERVICE_NAME: ${{ matrix.service.name }}
+          ENVIRONMENT: ${{ needs.detect-environment.outputs.environment }}
+        run: |
+          ECR_REPOSITORY="${SERVICE_NAME}-repo-${ENVIRONMENT}"
+          IMAGE_TAG="${{ github.sha }}"
+          SHORT_SHA=$(echo $IMAGE_TAG | cut -c1-7)
+          
+          echo "Building ${SERVICE_NAME}..."
+          docker build -t ${ECR_REPOSITORY}:latest -t ${ECR_REPOSITORY}:${SHORT_SHA} ./${{ matrix.service.path }}
+          
+          echo "Pushing to ${ECR_REGISTRY}/${ECR_REPOSITORY}..."
+          docker push ${ECR_REPOSITORY}:latest
+          docker push ${ECR_REPOSITORY}:${SHORT_SHA}
+          
+          echo "image=${ECR_REGISTRY}/${ECR_REPOSITORY}:${SHORT_SHA}" >> $GITHUB_OUTPUT

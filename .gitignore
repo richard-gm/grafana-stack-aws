@@ -1,0 +1,56 @@
+# Terraform
+**/.terraform/
+**/*.tfstate
+**/*.tfstate.*
+**/*.tfstate.backup
+**/*.tfstate.backup.*
+**/*.tfplan
+**/*.tfplan.*
+**/*.tfvars
+!**/terraform.tfvars.example
+**/.terraform.lock.hcl
+**/crash.log
+**/crash.*.log
+**/*.tf.json
+**/*.tf.json.*
+**/.terraformrc
+**/terraform.rc
+
+# Environment specific
+**/env.tfvars
+**/secrets.tfvars
+**/*.auto.tfvars
+!**/terraform.tfvars
+
+# AWS
+**/.aws/
+**/credentials
+
+# Docker
+**/.dockerignore
+**/docker-compose.override.yml
+
+# IDE
+**/.idea/
+**/.vscode/
+**/*.swp
+**/*.swo
+**/*~
+**/.DS_Store
+
+# OS
+**/Thumbs.db
+**/.DS_Store
+
+# Terraform-docs
+**/.terraform-docs.yml
+
+# Terragrunt
+**/.terragrunt-cache/
+**/terragrunt.hcl
+
+# Secrets
+**/*.pem
+**/*.key
+**/*.cert
+**/*.p12
