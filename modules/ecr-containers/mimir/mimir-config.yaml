@@ -1,0 +1,48 @@
+multitenancy_enabled: false
+
+server:
+  http_listen_port: 8080
+
+common:
+  storage:
+    backend: filesystem
+  instance_limits:
+    max_global_series_per_user: 0
+
+ingester:
+  lifecycler:
+    ring:
+      kvstore:
+        store: inmemory
+      replication_factor: 1
+
+  chunk_idle_period: 5m
+  chunk_retain_period: 30s
+
+  instance_limits:
+    max_inflight_push_requests: 500
+
+  wal:
+    enabled: true
+    dir: /tmp/mimir-wal
+
+storage:
+  filesystem:
+    dir: /tmp/mimir-data
+
+compactor:
+  data_dir: /tmp/mimir-compactor
+  sharding_ring:
+    kvstore:
+      store: inmemory
+
+distributor:
+  shard_by_all_labels: true
+
+limits:
+  max_global_series_per_user: 0
+  ingestion_rate: 0
+  ingestion_burst_size: 0
+
+analytics:
+  reporting_enabled: false
