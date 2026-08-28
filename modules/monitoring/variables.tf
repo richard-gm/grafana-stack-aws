@@ -1,3 +1,10 @@
+# ------------------------------------------------------------------------------
+# Inputs for the monitoring module.
+# These wire the module into the grafana-stack-aws outputs (VPC, Security, ECS
+# Pushgateway) and define the list of monitors. `monitoring_jobs` is the primary
+# knob operators turn — add an entry, get a scheduled monitor, no code change.
+# ------------------------------------------------------------------------------
+
 variable "project_name" {
   type        = string
   description = "Prefix used for all resource names"

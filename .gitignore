@@ -20,7 +20,8 @@
 **/env.tfvars
 **/secrets.tfvars
 **/*.auto.tfvars
-!**/terraform.tfvars
+# NOTE: terraform.tfvars are ignored (they may hold account IDs). Use the
+# *.tfvars.example templates and copy them to terraform.tfvars locally.
 
 # AWS
 **/.aws/
@@ -48,6 +49,12 @@
 # Terragrunt
 **/.terragrunt-cache/
 **/terragrunt.hcl
+
+# Python
+**/__pycache__/
+**/*.pyc
+**/.pytest_cache/
+**/*.egg-info/
 
 # Secrets
 **/*.pem

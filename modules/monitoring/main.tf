@@ -1,9 +1,12 @@
-data "aws_caller_identity" "current" {}
-
 ################################################################################
-# Scripts bucket (uploaded to by the GitHub Action on merge)
+# Scripts bucket — the "code store" for the monitors
 ################################################################################
 
+# WHY: The monitoring scripts (monitoring-scripts/*.py) are uploaded here by the
+# GitHub Action on merge. The Lambda downloads the one named in the EventBridge
+# event at runtime. Keeping scripts in S3 (instead of baking them into the Lambda)
+# means adding/changing a monitor is a file edit + a schedule rule — no Lambda
+# redeploy. The bucket name is account- and env-specific so nonprod/prod never clash.
 resource "aws_s3_bucket" "scripts" {
   bucket = "monitoring-scripts-${var.aws_account_id}-${var.env_subfix}"
 
@@ -12,6 +15,7 @@ resource "aws_s3_bucket" "scripts" {
   })
 }
 
+# WHY: Versioning so a broken script upload is recoverable and auditable.
 resource "aws_s3_bucket_versioning" "scripts" {
   bucket = aws_s3_bucket.scripts.id
   versioning_configuration {
@@ -19,6 +23,7 @@ resource "aws_s3_bucket_versioning" "scripts" {
   }
 }
 
+# WHY: Encrypt the scripts at rest (they may contain account-specific logic).
 resource "aws_s3_bucket_server_side_encryption_configuration" "scripts" {
   bucket = aws_s3_bucket.scripts.id
   rule {
@@ -28,6 +33,7 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "scripts" {
   }
 }
 
+# WHY: This bucket holds executable code, so it must never be publicly reachable.
 resource "aws_s3_bucket_public_access_block" "scripts" {
   bucket                  = aws_s3_bucket.scripts.id
   block_public_acls       = true
@@ -37,9 +43,13 @@ resource "aws_s3_bucket_public_access_block" "scripts" {
 }
 
 ################################################################################
-# Lambda layer (shared monitoring_sdk package, stdlib only)
+# Lambda layer — the shared `monitoring_sdk` package
 ################################################################################
 
+# WHY: Build the layer zip from src/monitoring_sdk. Every monitoring script runs
+# as a subprocess and does `from monitoring_sdk import Pushgateway`, so the SDK
+# must be on the Lambda PYTHONPATH. Placing it under
+# python/lib/python3.12/site-packages makes Lambda expose it automatically.
 data "archive_file" "layer" {
   type = "zip"
 
@@ -56,6 +66,8 @@ data "archive_file" "layer" {
   }
 }
 
+# WHY: Publish the SDK as a Lambda layer so all scripts share one copy of the
+# Pushgateway client instead of each bundling it.
 resource "aws_lambda_layer_version" "sdk" {
   filename            = data.archive_file.layer.output_path
   source_code_hash    = data.archive_file.layer.output_base64sha256
@@ -65,9 +77,11 @@ resource "aws_lambda_layer_version" "sdk" {
 }
 
 ################################################################################
-# Lambda function (single handler, dispatches by event.script)
+# Lambda function — the single dispatcher
 ################################################################################
 
+# WHY: Build the deployment package from the handler + the SDK (the handler also
+# imports the SDK directly so it can emit its own heartbeat metrics).
 data "archive_file" "lambda" {
   type = "zip"
 
@@ -90,9 +104,12 @@ data "archive_file" "lambda" {
 }
 
 ################################################################################
-# Dedicated Lambda security group + ingress rule to the Pushgateway
+# Networking — Lambda SG + ingress to the Pushgateway
 ################################################################################
 
+# WHY: A dedicated SG for the Lambda. Egress is open so it can reach S3 (to fetch
+# scripts) and AWS APIs over the NAT gateway; it needs no ingress because only
+# EventBridge invokes it.
 resource "aws_security_group" "lambda" {
   name        = "${var.project_name}-monitoring-lambda-sg-${var.env_subfix}"
   description = "SG for the monitoring Lambda; egress to AWS APIs and the Pushgateway"
@@ -110,7 +127,9 @@ resource "aws_security_group" "lambda" {
   })
 }
 
-# Allow this Lambda's SG to reach the Pushgateway on :9091 via the ECS/pushgateway SG.
+# WHY: The only network rule required to reach the in-VPC Pushgateway: open :9091
+# from the Lambda SG into the Pushgateway's SG (passed in as
+# pushgateway_security_group_id). This avoids reusing/modifying the grafana ECS SG.
 resource "aws_security_group_rule" "pushgateway_ingress" {
   type                     = "ingress"
   security_group_id        = var.pushgateway_security_group_id
@@ -121,6 +140,10 @@ resource "aws_security_group_rule" "pushgateway_ingress" {
   description              = "Allow monitoring Lambda to reach the Pushgateway"
 }
 
+# WHY: The one Lambda that every EventBridge schedule rule invokes. It downloads
+# the requested script from S3 and runs it; the script pushes metrics to the
+# Pushgateway through the layer. It lives in the private subnets (so it can use
+# the NAT to reach S3 and reach the in-VPC Pushgateway via the SG rule above).
 resource "aws_lambda_function" "monitoring" {
   function_name    = "${var.project_name}-monitoring-${var.env_subfix}"
   filename         = data.archive_file.lambda.output_path
