@@ -74,6 +74,8 @@ resource "aws_iam_role_policy" "github_actions_terraform" {
           "efs:*",
           "elasticloadbalancing:*",
           "iam:*",
+          "lambda:*",
+          "events:*",
           "s3:*",
           "logs:*",
           "cloudwatch:*",

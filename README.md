@@ -153,6 +153,7 @@ grafana-stack-aws/
 | **Security Module** | Security groups, KMS encryption, ACM certificates | [modules/security/README.md](modules/security/README.md) |
 | **ECS Module** | ECS cluster, services, IAM roles, load balancers | [modules/ecs/README.md](modules/ecs/README.md) |
 | **ECR Containers Module** | ECR repositories, Dockerfiles, configs | [modules/ecr-containers/README.md](modules/ecr-containers/README.md) |
+| **Monitoring Module** | Lambda + shared SDK layer + EventBridge schedules that push metrics to the Pushgateway | [modules/monitoring](modules/monitoring) |
 | **Nonprod Environment** | Non-production deployment configuration | [environments/nonprod/README.md](environments/nonprod/README.md) |
 | **Prod Environment** | Production deployment configuration | [environments/prod/README.md](environments/prod/README.md) |
 
@@ -171,6 +172,7 @@ flowchart LR
 3. **ECS Module** - Creates ECS services and load balancers (depends on VPC, Security)
 4. **ECR Containers Module** - Creates ECR repositories (independent)
 5. **OIDC Module** - Creates GitHub OIDC provider and IAM roles (independent)
+6. **Monitoring Module** - Lambda + shared SDK layer + EventBridge schedules; depends on VPC, Security and the ECS Pushgateway (writes to `:9091`)
 
 ## Services
 
