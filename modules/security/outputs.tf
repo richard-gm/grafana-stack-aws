@@ -23,17 +23,7 @@ output "nlb_security_group_id" {
   value       = aws_security_group.nlb.id
 }
 
-output "kms_key_arn" {
-  description = "ARN of the KMS key"
-  value       = aws_kms_key.main.arn
-}
-
-output "kms_key_id" {
-  description = "ID of the KMS key"
-  value       = aws_kms_key.main.key_id
-}
-
-output "certificate_arn" {
-  description = "ARN of the ACM certificate"
-  value       = var.certificate_arn != "" ? var.certificate_arn : (length(aws_acm_certificate.main) > 0 ? aws_acm_certificate.main[0].arn : "")
-}
+# output "certificate_arn" {
+#   description = "ARN of the ACM certificate (enable ACM in acm.tf)"
+#   value       = var.certificate_arn != "" ? var.certificate_arn : (length(aws_acm_certificate.main) > 0 ? aws_acm_certificate.main[0].arn : "")
+# }

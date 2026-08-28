@@ -2,7 +2,7 @@
 
 ## Overview
 
-This module manages security groups, encryption keys, and SSL/TLS certificates for the Grafana Stack. It provides a layered security approach with dedicated security groups for each component and KMS encryption for data at rest.
+This module manages security groups for the Grafana Stack. It provides a layered security approach with dedicated security groups for each component.
 
 ## Architecture
 
@@ -13,27 +13,18 @@ flowchart TD
     end
 
     subgraph SecurityGroups["Security Groups"]
-        ALB_SG[ALB SG\nInbound: 80, 443]
+        ALB_SG[ALB SG\nInbound: 80]
         ECS_SG[ECS SG\nInbound: From ALB, VPC]
         EFS_PROM_SG[EFS-Prometheus SG\nInbound: 2049 from ECS]
         EFS_GRAF_SG[EFS-Grafana SG\nInbound: 2049 from ECS]
         NLB_SG[NLB SG\nInbound: 9090, 9091]
     end
 
-    subgraph Encryption["Encryption"]
-        KMS[KMS Key\nAuto Rotation]
-        ACM[ACM Certificate\nSSL/TLS]
-    end
-
-    Users -->|HTTP/HTTPS| ALB_SG
+    Users -->|HTTP| ALB_SG
     ALB_SG -->|Forward| ECS_SG
     ECS_SG -->|NFS| EFS_PROM_SG
     ECS_SG -->|NFS| EFS_GRAF_SG
     Users -->|Metrics| NLB_SG
-
-    KMS -.->|Encrypt| EFS_PROM_SG
-    KMS -.->|Encrypt| EFS_GRAF_SG
-    ACM -.->|TLS Termination| ALB_SG
 ```
 
 ## Security Groups
@@ -42,7 +33,6 @@ flowchart TD
 | Direction | Port | Protocol | Source/Destination |
 |-----------|------|----------|-------------------|
 | Inbound | 80 | TCP | 0.0.0.0/0 |
-| Inbound | 443 | TCP | 0.0.0.0/0 |
 | Outbound | All | All | 0.0.0.0/0 |
 
 ### ECS Security Group
@@ -80,11 +70,6 @@ flowchart TD
 | `aws_security_group.efs_prometheus` | Security group for Prometheus EFS |
 | `aws_security_group.efs_grafana` | Security group for Grafana EFS |
 | `aws_security_group.nlb` | Security group for NLB |
-| `aws_kms_key.main` | KMS key for encryption |
-| `aws_kms_alias.main` | KMS key alias |
-| `aws_acm_certificate.main` | ACM certificate (optional) |
-| `aws_route53_record.cert_validation` | DNS validation record (optional) |
-| `aws_acm_certificate_validation.main` | Certificate validation (optional) |
 
 ## Variables
 
@@ -95,8 +80,6 @@ flowchart TD
 | `region` | `string` | - | AWS region |
 | `vpc_id` | `string` | - | The ID of the VPC |
 | `vpc_cidr` | `string` | - | The CIDR block of the VPC |
-| `certificate_arn` | `string` | `""` | ARN of existing ACM certificate (optional) |
-| `domain_name` | `string` | `""` | Domain name for new ACM certificate (optional) |
 | `tags_project` | `map(string)` | - | Tags to apply to all resources |
 
 ## Outputs
@@ -108,9 +91,6 @@ flowchart TD
 | `efs_prometheus_security_group_id` | Security group ID for Prometheus EFS |
 | `efs_grafana_security_group_id` | Security group ID for Grafana EFS |
 | `nlb_security_group_id` | Security group ID for NLB |
-| `kms_key_arn` | ARN of the KMS key |
-| `kms_key_id` | ID of the KMS key |
-| `certificate_arn` | ARN of the ACM certificate |
 
 ## Usage
 
@@ -134,6 +114,10 @@ module "security" {
 ## Security Features
 
 - **Layered Security Groups**: Each component has its own security group with minimal required access
-- **KMS Encryption**: Automatic key rotation for data at rest
-- **SSL/TLS**: ACM certificates for HTTPS traffic
 - **Least Privilege**: Security groups only allow necessary traffic
+
+## TLS / ACM (Disabled by Default)
+
+The `acm.tf` file contains an ACM certificate definition that is **commented out**. It is not created because Grafana is fronted by Duo SSO, data is restricted to a small set of users, and all inter-AWS traffic is already encrypted in transit.
+
+Enable it in production if the ALB is internet-facing and you expose Grafana to end users — serving over plain HTTP leaves Duo credentials and session tokens unencrypted on the wire. Alternatively, import your own certificate into ACM and pass its ARN via the `certificate_arn` variable. See the comments in `acm.tf` for the full enablement checklist (variables, outputs, OIDC permissions, ALB 443 ingress, and the HTTPS listener in `modules/ecs/alb.tf`).

@@ -23,24 +23,6 @@ variable "vpc_cidr" {
   type        = string
 }
 
-variable "certificate_arn" {
-  description = "ARN of the ACM certificate for SSL/TLS (leave empty to create new)"
-  type        = string
-  default     = ""
-}
-
-variable "domain_name" {
-  description = "Domain name for the ACM certificate"
-  type        = string
-  default     = ""
-}
-
-variable "route53_zone_id" {
-  description = "Route53 hosted zone ID for ACM certificate validation"
-  type        = string
-  default     = ""
-}
-
 variable "tags_project" {
   description = "Tags to apply to all resources"
   type        = map(string)

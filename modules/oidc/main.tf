@@ -83,9 +83,8 @@ resource "aws_iam_role_policy" "github_actions_terraform" {
           "secretsmanager:*",
           "sts:AssumeRole",
           "sts:GetCallerIdentity",
-          "kms:*",
-          "acm:*",
-          "route53:*",
+          # "acm:*",
+          # "route53:*",
           "servicediscovery:*",
           "sns:*",
           "sqs:*"
