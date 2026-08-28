@@ -153,6 +153,7 @@ grafana-stack-aws/
 | **Security Module** | Security groups, KMS encryption, ACM certificates | [modules/security/README.md](modules/security/README.md) |
 | **ECS Module** | ECS cluster, services, IAM roles, load balancers | [modules/ecs/README.md](modules/ecs/README.md) |
 | **ECR Containers Module** | ECR repositories, Dockerfiles, configs | [modules/ecr-containers/README.md](modules/ecr-containers/README.md) |
+| **Monitoring Module** | Lambda + shared SDK layer + EventBridge schedules that push metrics to the Pushgateway | [modules/monitoring](modules/monitoring) |
 | **Nonprod Environment** | Non-production deployment configuration | [environments/nonprod/README.md](environments/nonprod/README.md) |
 | **Prod Environment** | Production deployment configuration | [environments/prod/README.md](environments/prod/README.md) |
 
@@ -171,6 +172,7 @@ flowchart LR
 3. **ECS Module** - Creates ECS services and load balancers (depends on VPC, Security)
 4. **ECR Containers Module** - Creates ECR repositories (independent)
 5. **OIDC Module** - Creates GitHub OIDC provider and IAM roles (independent)
+6. **Monitoring Module** - Lambda + shared SDK layer + EventBridge schedules; depends on VPC, Security and the ECS Pushgateway (writes to `:9091`)
 
 ## Services
 
@@ -179,6 +181,24 @@ flowchart LR
 | Grafana | 3000 | Visualization and dashboards |
 | Prometheus | 9090 | Metrics collection and storage |
 | Pushgateway | 9091 | Push metrics endpoint |
+
+## Monitoring (custom scripts)
+
+The `modules/monitoring` module adds the team's own monitoring scripts on top of the
+observability stack. A single Lambda, triggered by multiple EventBridge schedules,
+downloads a script from S3 and runs it; the script pushes metrics to the
+**Pushgateway** (`:9091`), which Prometheus already scrapes, so the data shows up in
+Grafana with no new pipeline.
+
+- Scripts live in `monitoring-scripts/` and are uploaded to S3 by CI on merge.
+- Each monitor is one entry in `monitoring_jobs` (see `environments/*/main.tf`).
+- Shared Python SDK: `src/monitoring_sdk/` (packaged as a Lambda layer).
+- See [modules/monitoring/README.md](modules/monitoring/README.md) for details, the
+  alarm/heartbeat design, and the Grafana-side scrape requirement.
+
+> **Grafana-side requirement:** the Prometheus config (in its S3 bucket) must scrape
+> the Pushgateway **and** set `honor_labels: true`, or your per-monitor `job` labels
+> are lost and metrics may not appear.
 | Loki | 3100 | Log aggregation |
 | Mimir | 8080 | Long-term metrics storage |
 | Tempo | 3200 | Distributed tracing |
