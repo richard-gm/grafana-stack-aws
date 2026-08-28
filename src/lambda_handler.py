@@ -37,13 +37,16 @@ def _push_heartbeat(script, job, status):
             "gauge",
             "1 = last run succeeded, 0 = failed/errored",
         )
-        ts.add(int(time.time()), {"script": script, "job": job})
+        ts.add(int(time.time()), {"script": script, "monitored_job": job})
         st.add(1 if status == "success" else 0,
-               {"script": script, "job": job, "status": status})
+               {"script": script, "monitored_job": job, "status": status})
 
+        # Push the heartbeat under its OWN job group ("monitoring-runner") so it
+        # does NOT clobber the script's metrics (Pushgateway replaces the whole
+        # job/instance group on each PUT).
         pgw = Pushgateway(
             os.environ.get("PUSHGATEWAY_URL", ""),
-            job=job or "monitoring",
+            job="monitoring-runner",
             instance=script,
         )
         pgw.push([ts, st])

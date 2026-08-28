@@ -140,4 +140,5 @@ jobs:
 
       - name: Sync monitoring scripts to S3
         run: |
-          aws s3 sync monitoring-scripts/ s3://${{ needs.detect-environment.outputs.bucket }}/ --delete
+          aws s3 sync monitoring-scripts/ s3://${{ needs.detect-environment.outputs.bucket }}/ --delete \
+            --exclude "__pycache__/*" --exclude "*.pyc"
