@@ -1,8 +1,4 @@
-# ------------------------------------------------------------------------------
-# Outputs from the monitoring module.
-# Expose the Lambda, layer and scripts bucket so other modules/tooling (e.g.
-# a dashboard pipeline or an external alert router) can reference them.
-# ------------------------------------------------------------------------------
+# Monitoring module outputs.
 
 output "lambda_function_arn" {
   description = "ARN of the monitoring Lambda"

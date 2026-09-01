@@ -1,10 +1,4 @@
-# ------------------------------------------------------------------------------
-# Inputs for the monitoring module.
-# These wire the module into the grafana-stack-aws outputs (VPC, Security, ECS
-# Pushgateway) and define the list of monitors. `monitoring_jobs` is the primary
-# knob operators turn — add an entry, get a scheduled monitor, no code change.
-# ------------------------------------------------------------------------------
-
+# Monitoring module inputs.
 variable "project_name" {
   type        = string
   description = "Prefix used for all resource names"
@@ -90,6 +84,18 @@ variable "pushgateway_url" {
 variable "lambda_runtime" {
   type    = string
   default = "python3.12"
+}
+
+variable "lambda_handler_path" {
+  type        = string
+  default     = "${path.module}/../../src/lambda_handler.py"
+  description = "Filesystem path to src/lambda_handler.py. Terragrunt units override with an absolute path because modules run from .terragrunt-cache and cannot reach ../../src."
+}
+
+variable "monitoring_sdk_dir" {
+  type        = string
+  default     = "${path.module}/../../src/monitoring_sdk"
+  description = "Filesystem path to the src/monitoring_sdk package. Terragrunt units override with an absolute path because modules run from .terragrunt-cache and cannot reach ../../src."
 }
 
 variable "tags_project" {

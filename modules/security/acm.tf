@@ -1,30 +1,13 @@
 # ------------------------------------------------------------------------------
 # ACM (TLS certificate) - DISABLED BY DEFAULT
 # ------------------------------------------------------------------------------
-# This module creates an ACM certificate used to terminate TLS on the ALB so
-# Grafana can be served over HTTPS. It is intentionally commented out because:
-#
-#   * In non-prod / internal-only setups Grafana is fronted by Duo SSO and the
-#     data is only visible to a restricted set of users, so a public cert is not
-#     required.
-#   * All traffic between AWS services (Lambda monitoring scripts, ECS, S3, etc.)
-#     is already encrypted in transit by AWS's network fabric.
-#
-# ENABLE IN PROD IF:
-#   * The ALB is internet-facing (`internal = false`) and you expose Grafana to
-#     end users over the public internet.
-#   OR
-#   * You import your own certificate into AWS (e.g. via aws_acm_certificate
-#     import / ACM console) and pass its ARN via the `certificate_arn` variable,
-#     then attach it to an `aws_lb_listener` on port 443 in modules/ecs/alb.tf.
-#
-# To enable:
-#   1. Uncomment the variable declarations below (or add them to variables.tf).
-#   2. Uncomment the resources below.
-#   3. Uncomment the `certificate_arn` output in outputs.tf.
-#   4. Uncomment `acm:*` / `route53:*` in modules/oidc/main.tf.
-#   5. Uncomment the 443 ingress in the ALB security group (main.tf).
-#   6. Add an HTTPS listener in modules/ecs/alb.tf referencing
+# Grafana is fronted by Duo SSO and only reachable over internal links, so no
+# public cert is needed in non-prod. Enable for a public-facing ALB:
+#   1. Uncomment the variables and resources below.
+#   2. Uncomment the `certificate_arn` output in outputs.tf.
+#   3. Uncomment `acm:*` / `route53:*` in modules/oidc/main.tf.
+#   4. Uncomment the 443 ingress in the ALB security group (main.tf).
+#   5. Add an HTTPS listener in modules/ecs/alb.tf referencing
 #      `module.security.certificate_arn`.
 # ------------------------------------------------------------------------------
 #

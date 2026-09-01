@@ -9,7 +9,6 @@
 **/*.tfvars
 !**/terraform.tfvars.example
 **/_build/
-**/.terraform.lock.hcl
 **/crash.log
 **/crash.*.log
 **/*.tf.json
@@ -39,17 +38,14 @@
 **/*.swo
 **/*~
 **/.DS_Store
-
-# OS
 **/Thumbs.db
-**/.DS_Store
 
 # Terraform-docs
 **/.terraform-docs.yml
 
 # Terragrunt
 **/.terragrunt-cache/
-**/terragrunt.hcl
+**/*.terraform.lock.hcl
 
 # Python
 **/__pycache__/

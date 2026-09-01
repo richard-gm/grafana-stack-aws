@@ -67,23 +67,26 @@ flowchart TD
 
 ```
 grafana-stack-aws/
+├── root.hcl                       # Root Terragrunt config: provider gen, remote state, tf version
+├── _env/
+│   ├── common.hcl                 # project_name, region, shared tags
+│   ├── nonprod.hcl                # nonprod account/tags
+│   └── prod.hcl                   # prod account/tags
 ├── .github/
 │   └── workflows/
-│       ├── terraform.yml         # Terraform plan/apply CI/CD
-│       └── docker-build.yml      # Docker build/push CI/CD
+│       ├── terraform.yml          # Terragrunt plan/apply CI/CD (run --all)
+│       └── docker-build.yml       # Docker build/push CI/CD
 ├── environments/
-│   ├── nonprod/
-│   │   ├── README.md
-│   │   ├── main.tf
-│   │   ├── variables.tf
-│   │   ├── terraform.tfvars
-│   │   └── backend.tf
-│   └── prod/
-│       ├── README.md
-│       ├── main.tf
-│       ├── variables.tf
-│       ├── terraform.tfvars
-│       └── backend.tf
+│   ├── nonprod/                   # one unit per component, one S3 state each
+│   │   ├── vpc/terragrunt.hcl
+│   │   ├── security/terragrunt.hcl
+│   │   ├── ecr-containers/terragrunt.hcl
+│   │   ├── ecs/terragrunt.hcl
+│   │   └── monitoring/terragrunt.hcl
+│   └── prod/                      # same layout as nonprod
+├── _global/
+│   ├── nonprod/oidc/terragrunt.hcl  # GitHub OIDC + Actions role (per account)
+│   └── prod/oidc/terragrunt.hcl
 ├── modules/
 │   ├── oidc/
 │   │   ├── main.tf               # GitHub OIDC provider + IAM role
@@ -154,25 +157,33 @@ grafana-stack-aws/
 | **ECS Module** | ECS cluster, services, IAM roles, load balancers | [modules/ecs/README.md](modules/ecs/README.md) |
 | **ECR Containers Module** | ECR repositories, Dockerfiles, configs | [modules/ecr-containers/README.md](modules/ecr-containers/README.md) |
 | **Monitoring Module** | Lambda + shared SDK layer + EventBridge schedules that push metrics to the Pushgateway | [modules/monitoring](modules/monitoring) |
-| **Nonprod Environment** | Non-production deployment configuration | [environments/nonprod/README.md](environments/nonprod/README.md) |
-| **Prod Environment** | Production deployment configuration | [environments/prod/README.md](environments/prod/README.md) |
+| **Nonprod Environment** | Non-production Terragrunt units | [environments/nonprod](/environments/nonprod) |
+| **Prod Environment** | Production Terragrunt units | [environments/prod](/environments/prod) |
 
 ## Module Dependencies
 
+The stack is deployed with **Terragrunt**: each component under
+`environments/<env>/` is its own unit with its own S3 state, and units read
+dependency outputs via `dependency` blocks instead of chained module references.
+
 ```mermaid
 flowchart LR
-    VPC[VPC Module] --> SEC[Security Module]
-    SEC --> ECS[ECS Module]
-    ECR[ECR Containers Module] -.-> ECS
-    OIDC[OIDC Module] -.-> CICD[CI/CD Pipelines]
+    VPC[VPC Unit] --> SEC[Security Unit]
+    SEC --> ECS[ECS Unit]
+    ECR[ECR Containers Unit] -.-> ECS
+    ECS --> MON[Monitoring Unit]
+    OIDC[OIDC Unit] -.-> CICD[CI/CD Pipelines]
 ```
 
-1. **VPC Module** - Creates networking infrastructure (VPC, Subnets, NAT Gateway)
-2. **Security Module** - Creates security groups and encryption keys (depends on VPC)
-3. **ECS Module** - Creates ECS services and load balancers (depends on VPC, Security)
-4. **ECR Containers Module** - Creates ECR repositories (independent)
-5. **OIDC Module** - Creates GitHub OIDC provider and IAM roles (independent)
-6. **Monitoring Module** - Lambda + shared SDK layer + EventBridge schedules; depends on VPC, Security and the ECS Pushgateway (writes to `:9091`)
+1. **VPC Unit** - Creates networking infrastructure (VPC, Subnets, NAT Gateway)
+2. **Security Unit** - Creates security groups and encryption keys (depends on VPC)
+3. **ECS Unit** - Creates ECS services and load balancers (depends on VPC, Security, ECR Containers)
+4. **ECR Containers Unit** - Creates ECR repositories (independent)
+5. **OIDC Unit** - Creates GitHub OIDC provider and IAM roles, once per account (independent)
+6. **Monitoring Unit** - Lambda + shared SDK layer + EventBridge schedules; depends on VPC, Security and the ECS Pushgateway (writes to `:9091`)
+
+`terragrunt run --all apply` walks this graph automatically in order (parallel
+where independent).
 
 ## Services
 
@@ -191,7 +202,7 @@ downloads a script from S3 and runs it; the script pushes metrics to the
 Grafana with no new pipeline.
 
 - Scripts live in `monitoring-scripts/` and are uploaded to S3 by CI on merge.
-- Each monitor is one entry in `monitoring_jobs` (see `environments/*/main.tf`).
+- Each monitor is one entry in `monitoring_jobs` (see `environments/*/monitoring/terragrunt.hcl`).
 - Shared Python SDK: `src/monitoring_sdk/` (packaged as a Lambda layer).
 - See [modules/monitoring/README.md](modules/monitoring/README.md) for details, the
   alarm/heartbeat design, and the Grafana-side scrape requirement.
@@ -210,8 +221,8 @@ Grafana with no new pipeline.
 
 ```mermaid
 flowchart TD
-    subgraph Terraform["Terraform Pipeline"]
-        PR[Pull Request] --> PLAN[Terraform Plan]
+    subgraph Terraform["Terragrunt Pipeline"]
+        PR[Pull Request] --> PLAN[run --all plan]
         PUSH_DEVELOP[Push to develop] --> PLAN_NONPROD[Plan nonprod]
         PUSH_MAIN[Push to main] --> PLAN_PROD[Plan prod]
         PLAN_NONPROD --> MERGE1[Merge PR]
@@ -238,14 +249,13 @@ flowchart TD
 | `AWS_ACCOUNT_ID_NONPROD` | Nonprod AWS account ID |
 | `AWS_ACCOUNT_ID_PROD` | Prod AWS account ID |
 
-### Secrets
+The CI assumes the OIDC role named
+`grafana-stack-github-actions-<env>` (created by the `_global/<env>/oidc` unit)
+directly from the account ID above; no role ARN secrets are required.
 
-| Secret | Description |
-|--------|-------------|
-| `AWS_ROLE_ARN_NONPROD` | IAM role ARN for nonprod |
-| `AWS_ROLE_ARN_PROD` | IAM role ARN for prod |
+### Terragrunt Pipeline
 
-### Terraform Pipeline
+Runs `terragrunt run --all plan/apply ...` on `environments/$ENV`. Each unit plans/applies independently in dependency order.
 
 | Event | Action | Environment |
 |-------|--------|-------------|
@@ -275,34 +285,54 @@ Docker builds only trigger when files in these paths change:
 ### Prerequisites
 
 - AWS CLI configured
-- Terraform >= 1.0
+- Terraform >= 1.7
+- Terragrunt >= 1.0 (installed locally; CI pins the version in `terraform.yml`)
 - Docker (for building container images)
 - GitHub repository with OIDC configured
 
 ### Initial Setup
+
+The environment (`nonprod` / `prod`) is auto-detected from the unit path, so
+there is no per-env switch needed locally.
 
 ```bash
 # Clone the repository
 git clone <repo_name>
 cd grafana-stack-aws
 
-# Deploy OIDC module (one-time setup)
-cd modules/oidc
-terraform init
-terraform apply -var="github_org=<your-org>" -var="github_repo=<your-repo>"
+# 1) Values are injected via env vars, never hardcoded in _env/.
+#    Export locally (CI injects them from GitHub repo variables/secrets):
+#    export AWS_ACCOUNT_ID_NONPROD=<account-id>
+#    export AWS_ACCOUNT_ID_PROD=<account-id>
+#    export GITHUB_ORG=<org>
+#    export GITHUB_REPO=<repo>
 
-# Deploy nonprod environment
-cd ../../environments/nonprod
-terraform init
-terraform plan
-terraform apply
+# 2) One-time: bootstrap the state backend (versioned, SSE-encrypted S3 bucket)
+#    Terragrunt provisions the bucket and switches versioning on. Run from any
+#    unit dir (or with `terragrunt --backend-bootstrap` on the next apply).
+cd environments/nonprod/vpc && terragrunt backend bootstrap
+cd ../../..  # back to repo root
 
-# Deploy prod environment
-cd ../prod
-terraform init
-terraform plan
-terraform apply
+# 3) One-time: deploy the GitHub OIDC role per account (from repo root)
+cd _global/nonprod/oidc && terragrunt apply --non-interactive
+cd ../../../_global/prod/oidc && terragrunt apply --non-interactive
+cd ../../..  # back to repo root
+
+# 4) Deploy a whole environment (units run in dependency order)
+cd environments/nonprod
+terragrunt run --all apply --non-interactive
+
+# Or a single unit
+cd vpc && terragrunt plan && terragrunt apply
+cd ../..  # back to environments/
+
+# Prod
+cd prod
+terragrunt run --all apply --non-interactive
 ```
+
+> **First apply note:** `plan` needs dependency states to exist. On a brand-new
+> stack, run `apply` (which orders units correctly) before the first `plan`.
 
 ### GitHub Actions Setup
 
@@ -336,12 +366,23 @@ cd otel && docker build -t otel-repo-nonprod:latest . && cd ..
 
 ## Backend Configuration
 
-Both environments use S3 backend with versioning:
+One S3 item per unit (generated by `root.hcl`, `remote_state`). State safety
+comes from S3 bucket **versioning**, which Terragrunt enables on the state bucket:
 
-| Environment | S3 Bucket | Key |
-|-------------|-----------|-----|
-| nonprod | grafana-stack-terraform-state | nonprod/terraform.tfstate |
-| prod | grafana-stack-terraform-state | prod/terraform.tfstate |
+| Unit | S3 Key |
+|------|--------|
+| nonprod vpc | `environments/nonprod/vpc/terraform.tfstate` |
+| nonprod security | `environments/nonprod/security/terraform.tfstate` |
+| nonprod ecr-containers | `environments/nonprod/ecr-containers/terraform.tfstate` |
+| nonprod ecs | `environments/nonprod/ecs/terraform.tfstate` |
+| nonprod monitoring | `environments/nonprod/monitoring/terraform.tfstate` |
+| nonprod oidc | `_global/nonprod/oidc/terraform.tfstate` |
+| prod vpc | `environments/prod/vpc/terraform.tfstate` |
+| prod security | `environments/prod/security/terraform.tfstate` |
+| prod ecr-containers | `environments/prod/ecr-containers/terraform.tfstate` |
+| prod ecs | `environments/prod/ecs/terraform.tfstate` |
+| prod monitoring | `environments/prod/monitoring/terraform.tfstate` |
+| prod oidc | `_global/prod/oidc/terraform.tfstate` |
 
 ## Security Features
 
