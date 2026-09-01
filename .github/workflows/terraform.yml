@@ -19,6 +19,8 @@ env:
   AWS_REGION: us-east-1
   TERRAFORM_VERSION: "1.7.0"
   TERRAGRUNT_VERSION: "1.1.4"
+  GITHUB_ORG: ${{ github.repository_owner }}
+  GITHUB_REPO: ${{ github.event.repository.name }}
 
 jobs:
   detect-environment:
@@ -50,6 +52,8 @@ jobs:
     if: github.event_name == 'pull_request'
     env:
       TG_ENV: ${{ needs.detect-environment.outputs.environment }}
+      AWS_ACCOUNT_ID_NONPROD: ${{ vars.AWS_ACCOUNT_ID_NONPROD }}
+      AWS_ACCOUNT_ID_PROD: ${{ vars.AWS_ACCOUNT_ID_PROD }}
     defaults:
       run:
         working-directory: environments/${{ needs.detect-environment.outputs.environment }}
@@ -119,6 +123,8 @@ jobs:
     if: github.event_name == 'push' && (github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/main')
     env:
       TG_ENV: ${{ needs.detect-environment.outputs.environment }}
+      AWS_ACCOUNT_ID_NONPROD: ${{ vars.AWS_ACCOUNT_ID_NONPROD }}
+      AWS_ACCOUNT_ID_PROD: ${{ vars.AWS_ACCOUNT_ID_PROD }}
     defaults:
       run:
         working-directory: environments/${{ needs.detect-environment.outputs.environment }}

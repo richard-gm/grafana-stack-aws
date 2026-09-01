@@ -300,10 +300,12 @@ there is no per-env switch needed locally.
 git clone <repo_name>
 cd grafana-stack-aws
 
-# 1) One-time: fill in your accounts/tags
-#    - _env/nonprod.hcl  -> account_id
-#    - _env/prod.hcl     -> account_id
-#    - _env/common.hcl   -> github_org + github_repo (for the OIDC unit)
+# 1) Values are injected via env vars, never hardcoded in _env/.
+#    Export locally (CI injects them from GitHub repo variables/secrets):
+#    export AWS_ACCOUNT_ID_NONPROD=<account-id>
+#    export AWS_ACCOUNT_ID_PROD=<account-id>
+#    export GITHUB_ORG=<org>
+#    export GITHUB_REPO=<repo>
 
 # 2) One-time: bootstrap the state backend (versioned, SSE-encrypted S3 bucket)
 #    Terragrunt provisions the bucket and switches versioning on. Run from any
