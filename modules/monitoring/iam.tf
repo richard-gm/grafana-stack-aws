@@ -1,5 +1,4 @@
-# Execution role assumed by the monitoring Lambda. The trust policy allows
-# the Lambda service to assume it; the actual permissions are attached below.
+# Execution role for the monitoring Lambda.
 resource "aws_iam_role" "lambda" {
   name = "${var.project_name}-monitoring-lambda-${var.env_subfix}"
 
@@ -21,16 +20,13 @@ resource "aws_iam_role" "lambda" {
   })
 }
 
-# The Lambda runs inside the VPC (private subnets), so it needs the AWS-
-# managed policy that grants ENI create/delete and CloudWatch Logs permissions.
+# Required for VPC-connected Lambdas (ENIs + CloudWatch Logs).
 resource "aws_iam_role_policy_attachment" "lambda_vpc" {
   role       = aws_iam_role.lambda.name
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole"
 }
 
-#  Minimal inline permissions the Lambda always needs:
-#  - CloudWatch Logs so we can debug script output,
-#  - read of the scripts bucket so it can download the script to execute.
+# Logging + access to the scripts bucket.
 resource "aws_iam_role_policy" "lambda_inline" {
   name = "${var.project_name}-monitoring-lambda-inline-${var.env_subfix}"
   role = aws_iam_role.lambda.id
@@ -62,9 +58,8 @@ resource "aws_iam_role_policy" "lambda_inline" {
   })
 }
 
-# Read-only AWS API access for whatever the monitors inspect (RDS, S3,
-# EC2, CloudWatch, etc.). Centralised here so individual scripts never need their
-# own IAM. Override `lambda_policy_json` per environment if a monitor needs more.
+# Read-only AWS API access for the monitors. Centralized so scripts need no
+# IAM of their own; override var.lambda_policy_json per environment if needed.
 resource "aws_iam_role_policy" "lambda_monitoring_read" {
   name = "${var.project_name}-monitoring-read-${var.env_subfix}"
   role = aws_iam_role.lambda.id

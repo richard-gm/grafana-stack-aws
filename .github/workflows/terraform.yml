@@ -17,6 +17,8 @@ permissions:
 
 env:
   AWS_REGION: us-east-1
+  TERRAFORM_VERSION: "1.7.0"
+  TERRAGRUNT_VERSION: "1.1.4"
 
 jobs:
   detect-environment:
@@ -46,6 +48,8 @@ jobs:
     needs: detect-environment
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
+    env:
+      TG_ENV: ${{ needs.detect-environment.outputs.environment }}
     defaults:
       run:
         working-directory: environments/${{ needs.detect-environment.outputs.environment }}
@@ -62,17 +66,33 @@ jobs:
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: "1.7.0"
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
 
-      - name: Terraform Init
-        run: terraform init
+      - name: Setup Terragrunt
+        run: |
+          curl -fsSL "https://github.com/gruntwork-io/terragrunt/releases/download/v${TERRAGRUNT_VERSION}/terragrunt_linux_amd64" \
+            -o /usr/local/bin/terragrunt
+          chmod +x /usr/local/bin/terragrunt
+          terragrunt --version
+
+      - name: Cache Terragrunt
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/.terragrunt-cache
+          key: terragrunt-${{ runner.os }}-${{ hashFiles('terragrunt.hcl', '**/terragrunt.hcl', 'root.hcl', '_env/*.hcl') }}
+
+      - name: Terragrunt Init
+        run: terragrunt run --all init --non-interactive
+
+      - name: Terragrunt Validate
+        run: terragrunt run --all validate --non-interactive
 
       - name: Lint monitoring scripts
         run: python3 -m py_compile src/lambda_handler.py src/monitoring_sdk/*.py monitoring-scripts/*.py
 
-      - name: Terraform Plan
+      - name: Terragrunt Plan
         id: plan
-        run: terraform plan -no-color -input=false
+        run: terragrunt run --all plan --non-interactive -- -input=false -no-color
         continue-on-error: true
 
       - name: Comment PR with Plan
@@ -97,6 +117,8 @@ jobs:
     needs: detect-environment
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && (github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/main')
+    env:
+      TG_ENV: ${{ needs.detect-environment.outputs.environment }}
     defaults:
       run:
         working-directory: environments/${{ needs.detect-environment.outputs.environment }}
@@ -113,16 +135,23 @@ jobs:
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: "1.7.0"
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
 
-      - name: Terraform Init
-        run: terraform init
+      - name: Setup Terragrunt
+        run: |
+          curl -fsSL "https://github.com/gruntwork-io/terragrunt/releases/download/v${TERRAGRUNT_VERSION}/terragrunt_linux_amd64" \
+            -o /usr/local/bin/terragrunt
+          chmod +x /usr/local/bin/terragrunt
+          terragrunt --version
+
+      - name: Terragrunt Init
+        run: terragrunt run --all init --non-interactive
 
       - name: Lint monitoring scripts
         run: python3 -m py_compile src/lambda_handler.py src/monitoring_sdk/*.py monitoring-scripts/*.py
 
-      - name: Terraform Apply
-        run: terraform apply -auto-approve -input=false
+      - name: Terragrunt Apply
+        run: terragrunt run --all apply --non-interactive --parallelism 4
 
   upload-scripts:
     needs: [detect-environment, terraform-apply]
