@@ -1,14 +1,43 @@
 name: Terraform
 
+# `paths` filters keep the workflow from running on every merge to
+# develop/main -- only infra or workflow changes should trigger a plan/apply.
 on:
   push:
     branches:
       - develop
       - main
+    paths:
+      - 'root.hcl'
+      - '_env/**'
+      - 'environments/**'
+      - '_global/**'
+      - 'modules/**'
+      - 'monitoring-scripts/**'
+      - 'src/**'
+      - '.github/workflows/terraform.yml'
+      - '.github/workflows/docker-build.yml'
   pull_request:
     branches:
       - develop
       - main
+    paths:
+      - 'root.hcl'
+      - '_env/**'
+      - 'environments/**'
+      - '_global/**'
+      - 'modules/**'
+      - 'monitoring-scripts/**'
+      - 'src/**'
+      - '.github/workflows/terraform.yml'
+      - '.github/workflows/docker-build.yml'
+
+# Cancel a superseded run in favour of the latest. Without this, two merges
+# to main within minutes could both try to apply (parallel state writes ->
+# lock contention/failed state pushes).
+concurrency:
+  group: terraform-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   id-token: write
